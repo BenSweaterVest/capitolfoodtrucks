@@ -4,6 +4,10 @@
  *
  * Required Environment Variables:
  * - GITHUB_TOKEN: GitHub Personal Access Token (required)
+ *     Fine-grained token (recommended): starts with github_pat_
+ *       Permissions: Contents (read/write), Metadata (read)
+ *     Classic token: starts with ghp_
+ *       Scope: repo
  * - GITHUB_REPO: Repository in format "owner/repo" (required)
  * - SAVE_PASSWORD: Password for authentication (required)
  * - ALLOWED_ORIGINS: Comma-separated allowed origins (optional, defaults to *)
@@ -42,9 +46,22 @@ export async function onRequestPost(context) {
   const maxContentSize = parseInt(env.MAX_CONTENT_SIZE || '52428800'); // 50MB default
 
   // Determine CORS origin
+  // Handle 'null' origin (local file access) explicitly
   const requestOrigin = request.headers.get('Origin');
-  const allowOrigin = allowedOrigins.includes('*') ? '*' :
-    (allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0]);
+  let allowOrigin;
+  if (allowedOrigins.includes('*')) {
+    // Wildcard: allow the specific origin (including 'null' for local files)
+    allowOrigin = requestOrigin || '*';
+  } else if (requestOrigin === 'null' || allowedOrigins.includes('null')) {
+    // Explicitly allow local file access
+    allowOrigin = 'null';
+  } else if (allowedOrigins.includes(requestOrigin)) {
+    // Allow specific whitelisted origin
+    allowOrigin = requestOrigin;
+  } else {
+    // Fallback to first allowed origin
+    allowOrigin = allowedOrigins[0];
+  }
 
   // Set CORS headers
   const corsHeaders = {
@@ -271,8 +288,22 @@ export async function onRequestOptions(context) {
   // Get allowed origins from environment
   const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['*'];
   const requestOrigin = request.headers.get('Origin');
-  const allowOrigin = allowedOrigins.includes('*') ? '*' :
-    (allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0]);
+
+  // Determine CORS origin (same logic as POST handler)
+  let allowOrigin;
+  if (allowedOrigins.includes('*')) {
+    // Wildcard: allow the specific origin (including 'null' for local files)
+    allowOrigin = requestOrigin || '*';
+  } else if (requestOrigin === 'null' || allowedOrigins.includes('null')) {
+    // Explicitly allow local file access
+    allowOrigin = 'null';
+  } else if (allowedOrigins.includes(requestOrigin)) {
+    // Allow specific whitelisted origin
+    allowOrigin = requestOrigin;
+  } else {
+    // Fallback to first allowed origin
+    allowOrigin = allowedOrigins[0];
+  }
 
   return new Response(null, {
     status: 200,
