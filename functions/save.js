@@ -40,10 +40,10 @@ function checkRateLimit(identifier) {
 export async function onRequestPost(context) {
   const { request, env } = context;
 
-  // Get configuration from environment variables
-  const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['*'];
-  const filePath = env.FILE_PATH || 'index.html';
-  const maxContentSize = parseInt(env.MAX_CONTENT_SIZE || '52428800'); // 50MB default
+  // Get configuration from environment variables with safe fallbacks
+  const allowedOrigins = env?.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['*'];
+  const filePath = env?.FILE_PATH || 'index.html';
+  const maxContentSize = parseInt(env?.MAX_CONTENT_SIZE || '52428800'); // 50MB default
 
   // Determine CORS origin
   // Handle 'null' origin (local file access) explicitly
@@ -283,35 +283,51 @@ export async function onRequestPost(context) {
 
 // Handle CORS preflight requests
 export async function onRequestOptions(context) {
-  const { request, env } = context;
+  try {
+    const { request, env } = context;
 
-  // Get allowed origins from environment
-  const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['*'];
-  const requestOrigin = request.headers.get('Origin');
+    // Get allowed origins from environment with safe fallback
+    const allowedOrigins = env?.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['*'];
+    const requestOrigin = request.headers.get('Origin');
 
-  // Determine CORS origin (same logic as POST handler)
-  let allowOrigin;
-  if (allowedOrigins.includes('*')) {
-    // Wildcard: allow the specific origin (including 'null' for local files)
-    allowOrigin = requestOrigin || '*';
-  } else if (requestOrigin === 'null' || allowedOrigins.includes('null')) {
-    // Explicitly allow local file access
-    allowOrigin = 'null';
-  } else if (allowedOrigins.includes(requestOrigin)) {
-    // Allow specific whitelisted origin
-    allowOrigin = requestOrigin;
-  } else {
-    // Fallback to first allowed origin
-    allowOrigin = allowedOrigins[0];
-  }
-
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': allowOrigin,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Max-Age': '86400'
+    // Determine CORS origin (same logic as POST handler)
+    let allowOrigin;
+    if (allowedOrigins.includes('*')) {
+      // Wildcard: allow the specific origin (including 'null' for local files)
+      allowOrigin = requestOrigin || '*';
+    } else if (requestOrigin === 'null' || allowedOrigins.includes('null')) {
+      // Explicitly allow local file access
+      allowOrigin = 'null';
+    } else if (allowedOrigins.includes(requestOrigin)) {
+      // Allow specific whitelisted origin
+      allowOrigin = requestOrigin;
+    } else {
+      // Fallback to first allowed origin
+      allowOrigin = allowedOrigins[0];
     }
-  });
+
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': allowOrigin,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  } catch (error) {
+    // Ensure we always return a valid CORS response, even if there's an error
+    console.error('Error in OPTIONS handler:', error);
+    const requestOrigin = context?.request?.headers?.get('Origin');
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': requestOrigin || '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
 }
+
